@@ -1,0 +1,54 @@
+# Devsecops Secure Pipeline
+# Git Ignore Rules
+
+# Environment Variable / secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# AWS local credentials
+.aws/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+crash log
+crash.log
+crash.*log
+*.tfplan
+
+# Python
+_pycache_/
+*.py[cod]
+.venv/
+venv/
+
+# Test / coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Security scanner output
+security-reports/
+*.sarif
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build artifacts
+dist/
+build/
