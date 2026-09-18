@@ -17,7 +17,7 @@ def home():
 def health():
     return jsonify(
     {
-        "status": "healthy"
+        "status": "unhealthy"
     }
 )
 
