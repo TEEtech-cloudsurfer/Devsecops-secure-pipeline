@@ -14,6 +14,13 @@ secret_scan:
   script:
     - gitleaks detect --source . --config .gitleaks.toml --verbose --redact
 
+sast_scan:
+  stage: security
+  image: semgrep/semgrep
+
+  script:
+    - semgrep scan --config auto --error application/
+
 unit_tests:
   stage: test
   image: python:3.10-slim
