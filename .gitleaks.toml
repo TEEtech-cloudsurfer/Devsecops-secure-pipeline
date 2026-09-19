@@ -1,0 +1,5 @@
+[[rules]]
+id = "portfolio-test-secret"
+description = "Detect controlled portfolio test secrets"
+regex = '''PORTFOLIO_SECRET_[A-Za-z0-9]{20,}'''
+keywords = ["PORTFOLIO_SECRET_"]

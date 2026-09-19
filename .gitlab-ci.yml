@@ -1,8 +1,18 @@
 stages:
+  - security
   - test
 
 variables:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+secret_scan:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+
+  script:
+    - gitleaks detect --source . --config .gitleaks.toml --verbose --redact
 
 unit_tests:
   stage: test
