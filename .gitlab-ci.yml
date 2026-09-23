@@ -19,7 +19,15 @@ sast_scan:
   image: semgrep/semgrep
 
   script:
-    - semgrep scan --config auto --error application/
+    - mkdir -p security-reports
+    - semgrep scan --config auto --json --output security-reports/semgrep-results.json application/
+    - python scripts/security_report.py --scanner semgrep --input security-reports/semgrep-results.json
+
+  artifacts:
+    when: always
+    paths:
+      - security-reports/semgrep-results.json
+    expire_in: 7 days
 
 unit_tests:
   stage: test
