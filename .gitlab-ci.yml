@@ -1,6 +1,10 @@
 stages:
   - security
   - test
+  - container_security
+  - security_gate
+  - deploy
+  - aws_identity_validation
 
 variables:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -8,7 +12,7 @@ variables:
 secret_scan:
   stage: security
   image:
-    name: zricethezav/gitleaks:latest
+    name: zricethezav/gitleaks:v8.18.4
     entrypoint: [""]
 
   script:
@@ -29,6 +33,38 @@ sast_scan:
       - security-reports/semgrep-results.json
     expire_in: 7 days
 
+dependency_scan:
+  stage: test
+  image:
+    name: aquasec/trivy:0.74.0
+    entrypoint: [""]
+  script:
+    - mkdir -p security-reports
+    - trivy fs --scanners vuln --format json --output security-reports/trivy-dependency-results.json application/
+  artifacts:
+    when: always
+    paths:
+      - security-reports/trivy-dependency-results.json
+    expire_in: 7 days
+
+iac_scan:
+  stage: test
+  image:
+    name: bridgecrew/checkov:3.3.20
+    entrypoint: [""]
+
+  script:
+    - mkdir -p security-reports/checkov
+    - checkov -d terraform/ --framework terraform -o json > security-reports/checkov/results.json || CHECKOV_EXIT=$?
+    - echo "Checkov scanner exit code ${CHECKOV_EXIT:-0}"
+    - test -s security-reports/checkov/results.json
+
+  artifacts:
+    when: always
+    paths:
+      - security-reports/checkov/results.json
+    expire_in: 7 days
+
 unit_tests:
   stage: test
   image: python:3.10-slim
@@ -39,3 +75,98 @@ unit_tests:
 
   script:
     - python -m pytest -v
+
+container_build:
+  stage: test
+  image:
+    name: docker:27-cli
+    entrypoint: [""]
+
+  services:
+    - name: docker:27-dind
+
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+
+  script:
+    - docker build --pull -t devsecops-secure-pipeline:ci application/
+    - docker save devsecops-secure-pipeline:ci -o container-image.tar
+    - test -s container-image.tar
+
+  artifacts:
+    paths:
+      - container-image.tar
+    expire_in: 1 day
+
+container_scan:
+  stage: container_security
+  image:
+    name: aquasec/trivy:0.74.0
+    entrypoint: [""]
+
+  needs:
+    - job: container_build
+      artifacts: true
+
+  script:
+    - mkdir -p security-reports/trivy
+    - trivy image --input container-image.tar --format json --output security-reports/trivy/container-results.json
+    - test -s security-reports/trivy/container-results.json
+
+  artifacts:
+    when: always
+    paths:
+      - security-reports/trivy/container-results.json
+    expire_in: 7 days
+
+container_gate:
+  stage: security_gate
+  image: python:3.10-slim
+
+  needs:
+    - job: container_scan
+      artifacts: true
+
+  script:
+    - python scripts/security_report.py --scanner trivy --control SC-05 --input security-reports/trivy/container-results.json
+
+dependency_gate:
+  stage: security_gate
+  image: python:3.10-slim
+  needs:
+    - job: dependency_scan
+      artifacts: true
+  script:
+    - python scripts/security_report.py --scanner trivy --input security-reports/trivy-dependency-results.json
+
+iac_gate:
+  stage: security_gate
+  image: python:3.10-slim
+
+  needs:
+    - job: iac_scan
+      artifacts: true
+
+  script:
+    - python scripts/security_report.py --scanner checkov --input security-reports/checkov/results.json
+
+aws_identity_validation:
+  stage: deploy
+  image:
+    name: amazon/aws-cli:2.31.15
+    entrypoint: [""]
+
+  id_tokens:
+    AWS_OIDC_TOKEN:
+      aud: sts.amazonaws.com
+
+  script:
+    - echo "$AWS_OIDC_TOKEN" > /tmp/aws_oidc_token
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=/tmp/aws_oidc_token
+    - aws sts get-caller-identity
+    - aws ecr get-login-password --region us-east-1 > /dev/null
+    - echo "SC-06 GitLab OIDC federation validation passed."
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
