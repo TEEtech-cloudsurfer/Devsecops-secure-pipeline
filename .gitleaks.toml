@@ -1,3 +1,8 @@
+title = "DevSecOps Secure Pipeline Gitleaks Configuration"
+
+ [extend]
+ useDefault = true
+
 [[rules]]
 id = "portfolio-test-secret"
 description = "Detect controlled portfolio test secrets"

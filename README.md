@@ -1,146 +1,114 @@
 # DevSecOps Secure Pipeline
 
-## Overview
+**Engineering security into software delivery, from source code to AWS runtime monitoring.**
 
-The DevSecOps Secure Pipeline is a portfolio security engineering project
-designed to demonstrate how automated security controls can be integrated
-throughout the software development lifecycle.
+A cloud security engineering portfolio project demonstrating how automated controls detect vulnerabilities, enforce risk-based security policies, and monitor security-sensitive AWS activity.
 
-The project implements a CI/CD pipeline that evaluates application code,
-dependencies, secrets, infrastructure-as-code, container images, and
-deployment configurations before workloads are deployed into AWS.
+**Phase 1: Complete (October 2026)**
 
-The objective is not simply to identify vulnerabilities, but to enforce
-security gates capable of preventing unacceptable risk from progressing
-through the deployment pipeline.
+| 9 security controls | 76 local Python tests passed | GitLab `main` pipeline passed | 0 blocking IaC findings |
+|:--:|:--:|:--:|:--:|
 
-## Problem Statement
+> **In plain language:** This project demonstrates how to check software and infrastructure for security problems *before* delivery, and how to detect selected suspicious changes in AWS afterward.
 
-Traditional CI/CD pipelines prioritize rapid software delivery but may allow
-security vulnerabilities, exposed credentials, insecure infrastructure, or
-vulnerable container images to reach production environments.
+## Architecture at a glance
 
-Security testing performed only after deployment increases remediation cost
-and exposes organizations to unnecessary risk.
+![Architecture of the DevSecOps security controls and AWS runtime monitoring](docs/devsecops-architecture.svg)
 
-This project demonstrates a shift-left DevSecOps architecture in which
-automated security controls are incorporated directly into the CI/CD
-workflow.
+**Reading the diagram:** The left side shows preventive checks and security gates. The right side shows detective monitoring in AWS. These are implemented capabilities, **not** a claim that a complete application was continuously deployed to Amazon EKS.
 
-## Project Objectives
+<details>
+<summary><strong>View editable architecture flow (Mermaid)</strong></summary>
 
-- Build a functional CI/CD pipeline using GitLab CI/CD.
-- Perform automated static application security testing (SAST).
-- Detect secrets and credentials committed to source control.
-- Identify vulnerable third-party dependencies.
-- Scan Terraform infrastructure for insecure configurations.
-- Scan container images for known vulnerabilities.
-- Enforce security gates based on defined risk criteria.
-- Store approved container images in Amazon ECR.
-- Deploy approved workloads to Amazon EKS.
-- Implement AWS security monitoring and logging.
-- Demonstrate detection, pipeline failure, remediation, and successful
-  redeployment of intentionally introduced security issues.
+```mermaid
+flowchart LR
+  A[Developer / GitLab source] --> B[GitLab CI/CD]
+  subgraph PREVENT[Prevent and validate]
+    B --> C[Unit tests + Gitleaks + Semgrep]
+    C --> D[Trivy dependencies + Checkov IaC]
+    D --> E[Docker build + Trivy image scan]
+    E --> F{Risk-based security gates}
+    F -->|BLOCK or scanner ERROR| X[Fail pipeline]
+    F -->|Policy permits| G[Conftest Kubernetes policy checks]
+  end
+  B -. Short-lived AWS authentication .-> H[GitLab OIDC / AWS IAM]
+  subgraph DETECT[AWS detective controls]
+    I[CloudTrail] --> J[EventBridge IAM / ECR event rules]
+    J --> K[KMS-encrypted SNS notification]
+  end
+  classDef check fill:#e7f3ff,stroke:#2d6796,color:#17324f
+  classDef gate fill:#e1f5e9,stroke:#27835d,color:#173e2a
+  classDef warn fill:#ffe8e8,stroke:#c85d5d,color:#6b2020
+  class C,D,E,G,H,I,J,K check
+  class F gate
+  class X warn
+```
 
-## Target Architecture
+</details>
 
-Developer
-    |
-    v
-GitLab Repository
-    |
-    v
-GitLab CI/CD
-    |
-    +-- SAST
-    +-- Secret Scanning
-    +-- Dependency Scanning
-    +-- IaC Security Scanning
-    |
-    v
-Docker Build
-    |
-    v
-Container Vulnerability Scan
-    |
-    v
-Amazon ECR
-    |
-    v
-Deployment Security Gate
-    |
-    v
-Amazon EKS
-    |
-    v
-AWS Security Monitoring
+## Evidence: Successful GitLab security pipeline
 
-## Security Philosophy
+![Successful GitLab feature-branch pipeline showing ten passed jobs across scans, builds and security gates](docs/gitlab-feature-pipeline-passed.png)
 
-The pipeline follows a defense-in-depth approach. No individual security
-control is treated as sufficient protection.
+*Screenshot: GitLab pipeline **#2931166737**, SC-09 feature branch, 10 successful jobs. This is feature-branch evidence; the separate post-merge `main` pipeline was also confirmed passed. GitLab's “Tests 0” means test reports were not published to its Tests interface; the 76 passing Python tests were verified locally.*
 
-Controls are placed at multiple stages of the software delivery lifecycle
-to identify security issues as early as possible and prevent unacceptable
-risk from progressing toward deployment.
+## Why this project matters
 
-The project will demonstrate both preventive and detective controls,
-including intentionally introduced security failures followed by documented
-remediation.
+Software delivery can introduce risk through application code, exposed secrets, vulnerable dependencies, insecure infrastructure, container images, and overly permissive access. Security controls integrated into CI/CD can surface these risks early and stop unacceptable findings from progressing. Monitoring complements prevention by identifying selected security-sensitive activity in AWS.
 
-## Planned Security Gates
+## Implemented security controls
 
-| Pipeline Stage | Security Control | Purpose |
+| Control | Technology | What it demonstrates |
 |---|---|---|
-| Source | Secret scanning | Detect exposed credentials and sensitive data |
-| Code | SAST | Identify insecure application code |
-| Dependencies | SCA | Detect vulnerable third-party packages |
-| Infrastructure | IaC scanning | Identify insecure Terraform configuration |
-| Build | Container scanning | Detect vulnerable packages and images |
-| Deployment | Policy enforcement | Prevent noncompliant workloads from deploying |
-| Runtime | AWS monitoring | Detect suspicious activity after deployment |
+| SC-01 | Gitleaks | Detects secrets in source code |
+| SC-02 | Semgrep | Finds insecure code patterns |
+| SC-03 | Trivy | Evaluates dependency vulnerabilities |
+| SC-04 | Checkov | Enforces Terraform security policy |
+| SC-05 | Docker + Trivy | Builds and scans container images |
+| SC-06 | GitLab OIDC + AWS IAM | Uses short-lived federated credentials |
+| SC-07 | Conftest | Evaluates Kubernetes deployment policy |
+| SC-08 | GitLab protected workflow | Applies controlled integration practices |
+| SC-09 | CloudTrail + EventBridge + SNS + KMS | Detects selected AWS changes and routes encrypted alerts |
 
-## Technology Stack
+See [security controls and validation evidence](docs/security-controls.md).
 
-### CI/CD
-- GitLab
-- GitLab CI/CD
+## Engineering decisions
 
-### Application and Containers
-- Python
-- Docker
+**Fail-closed scanning.** The custom [security reporter](scripts/security_report.py) differentiates clean scans (`0`), blocking findings (`1`), and scanner/report-processing errors (`2`). A broken scanner must not be mistaken for a passing security check.
 
-### Infrastructure
-- Terraform
-- AWS
-- Amazon ECR
-- Amazon EKS
+**Risk-based enforcement.** Findings are categorized as blocking or report-only under documented policy. Resource-specific Checkov exceptions are scoped to justified cases rather than suppressing entire categories of findings.
 
-### Security
-- Semgrep
-- Gitleaks
-- Trivy
-- Checkov
-- Policy as Code
+**Short-lived cloud access.** GitLab OIDC federation avoids storing long-lived AWS access keys in CI/CD.
 
-### Monitoring
-- AWS Security Hub
-- Amazon GuardDuty
-- Amazon CloudWatch
+**Defense in depth.** Preventive pipeline controls are complemented by AWS detective monitoring; neither is represented as a complete substitute for the other.
 
-## Repository Structure
+## Validation summary
 
-```text
-devsecops-secure-pipeline/
-├── application/
-├── docs/
-│   ├── architecture.md
-│   ├── security-controls.md
-│   └── threat-model.md
-├── kubernetes/
-├── policies/
-├── scripts/
-├── terraform/
-├── tests/
-├── .gitignore
-└── README.md
+- **76 Python tests passed locally**.
+- **Post-merge GitLab `main` pipeline passed**.
+- **Zero Checkov BLOCK findings**; **12 REPORT findings** remain documented.
+- A **live IAM trust-policy update** was detected by the AWS monitoring workflow.
+- A **controlled EventBridge event** reached KMS-encrypted SNS notification delivery.
+- **Live ECR event detection remains to be validated end to end**.
+
+## Scope and limitations
+
+This is a portfolio/lab implementation, not a production-certified platform. A full continuous EKS application deployment has not been established by the Phase 1 validation evidence. Additional hardening opportunities include CloudTrail and S3 encryption/logging improvements, resilience, and further runtime validation. Accepted risks are documented rather than hidden.
+
+## Explore the repository
+
+| Path | Contents |
+|---|---|
+| [`.gitlab-ci.yml`](.gitlab-ci.yml) | CI/CD jobs and security stages |
+| [`application/`](application/) | Flask application and container configuration |
+| [`terraform/`](terraform/) | AWS infrastructure as code |
+| [`scripts/security_report.py`](scripts/security_report.py) | Security policy enforcement logic |
+| [`tests/`](tests/) | Automated tests |
+| [`docs/architecture.md`](docs/architecture.md) | Detailed architecture |
+| [`docs/security-controls.md`](docs/security-controls.md) | Controls, evidence and residual risks |
+| [`docs/threat-model.md`](docs/threat-model.md) | Threat model |
+| [`AGENTS.md`](AGENTS.md) | Repository engineering standards |
+
+---
+
+**Takeaway:** A green pipeline is useful. A pipeline whose security decisions can be explained, tested, and defended is better.
